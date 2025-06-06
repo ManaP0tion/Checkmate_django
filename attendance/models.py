@@ -6,6 +6,11 @@ class Lecture(models.Model):
     code = models.CharField(max_length=20, unique=True)
     total_weeks = models.PositiveIntegerField(default=15)
     professor = models.ForeignKey(User, on_delete=models.CASCADE, limit_choices_to={'role': 'professor'})
+    students = models.ManyToManyField(User, related_name='enrolled_lectures', limit_choices_to={'role': 'student'})
+
+    def __str__(self):
+        return f"{self.name} ({self.code})"
+
 
 class AttendanceSession(models.Model):
     lecture = models.ForeignKey(Lecture, on_delete=models.CASCADE)

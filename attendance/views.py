@@ -123,3 +123,43 @@ class LectureCreateView(generics.CreateAPIView):
     queryset = Lecture.objects.all()
     serializer_class = LectureCreateSerializer
     permission_classes = [IsAdminUser]  # 관리자만 등록 가능
+
+class AttendanceRecordCreateView(APIView):
+    def post(self, request):
+        student_id = request.data.get('student_id')
+        session_id = request.data.get('session_id')
+        status_value = request.data.get('status', 'present')  # 기본값 'present'
+
+        # 필수값 확인
+        if not student_id or not session_id:
+            return Response({"error": "student_id와 session_id는 필수입니다."}, status=400)
+
+        try:
+            session = AttendanceSession.objects.get(id=session_id, is_active=True)
+        except AttendanceSession.DoesNotExist:
+            return Response({"error": "세션을 찾을 수 없습니다."}, status=404)
+
+        try:
+            student = User.objects.get(id=student_id, role='student')
+        except User.DoesNotExist:
+            return Response({"error": "유효한 학생 정보가 아닙니다."}, status=404)
+
+        # 🔐 출석 가능한 학생인지 확인
+        if not session.lecture.students.filter(id=student.id).exists():
+            return Response({"error": "해당 강의를 수강하지 않는 학생입니다."}, status=403)
+
+        # ✅ 출석 기록 저장
+        record, created = AttendanceRecord.objects.get_or_create(
+            session=session,
+            student=student,
+            defaults={'status': status_value}
+        )
+
+        return Response({
+            "message": "출석 처리 완료" if created else "이미 출석 처리됨",
+            "data": {
+                "session": session.id,
+                "student": student.name,
+                "status": status_value
+            }
+        }, status=200)
