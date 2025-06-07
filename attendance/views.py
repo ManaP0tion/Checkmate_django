@@ -1,20 +1,37 @@
-import requests
-from drf_yasg import openapi
-from drf_yasg.utils import swagger_auto_schema
+from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
 from rest_framework import generics, status
-from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from drf_yasg import openapi
+from drf_yasg.utils import swagger_auto_schema
+
+import qrcode
+import base64
+from io import BytesIO
 
 from users.models import User
 from .models import AttendanceSession, Lecture, AttendanceRecord
-from .serializers import AttendanceSessionSerializer, LectureCreateSerializer
-
-RASPBERRY_PI_URL = "http://127.0.0.1:8000/api/ble/advertise/"
-RASPBERRY_PI_STOP_URL = "http://127.0.0.1:8000/api/ble/stop/"
+from .serializers import (
+    AttendanceSessionSerializer,
+    LectureCreateSerializer,
+    LectureSerializer,
+    AttendanceRecordSerializer
+)
+from .utils.raspberry_pi import notify_raspberry_pi_start, notify_raspberry_pi_stop
 
 # 출석 시작 (세션 생성)
 class StartAttendanceSessionView(APIView):
+    @swagger_auto_schema(
+        operation_summary="출석 세션 시작",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=["lecture", "week"],
+            properties={
+                "lecture": openapi.Schema(type=openapi.TYPE_INTEGER, description="강의 ID"),
+                "week": openapi.Schema(type=openapi.TYPE_INTEGER, description="주차"),
+            }
+        )
+    )
     def post(self, request):
         lecture_id = request.data.get('lecture')
         week = request.data.get('week')
@@ -34,29 +51,26 @@ class StartAttendanceSessionView(APIView):
         )
 
         # ✅ 교수 username 포함해서 전송
-        payload = {
-            "lecture_id": lecture.id,
-            "session_id": session.id,
-            "professor_username": lecture.professor.username
-        }
-
-        try:
-            response = requests.post(RASPBERRY_PI_URL, json=payload, timeout=3)
-            if response.status_code != 200:
-                return Response({
-                    "session": AttendanceSessionSerializer(session).data,
-                    "warning": "세션은 생성되었지만 라즈베리파이 응답이 올바르지 않음"
-                }, status=207)
-        except requests.RequestException:
+        success = notify_raspberry_pi_start(session)
+        if not success:
             return Response({
                 "session": AttendanceSessionSerializer(session).data,
                 "warning": "세션은 생성되었지만 라즈베리파이에 연결할 수 없음"
             }, status=207)
-
         return Response(AttendanceSessionSerializer(session).data, status=201)
 
 # 출석 종료 (is_active → False)
 class EndAttendanceSessionView(APIView):
+    @swagger_auto_schema(
+        operation_summary="출석 세션 종료",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=["session_id"],
+            properties={
+                "session_id": openapi.Schema(type=openapi.TYPE_INTEGER, description="세션 ID"),
+            }
+        )
+    )
     def post(self, request):
         session_id = request.data.get('session_id')
 
@@ -71,20 +85,12 @@ class EndAttendanceSessionView(APIView):
         session.is_active = False
         session.save()
 
-        # ✅ 라즈베리파이에 세션 종료 요청
-        try:
-            response = requests.post(RASPBERRY_PI_STOP_URL, json={"session_id": session.id}, timeout=3)
-            if response.status_code != 200:
-                return Response({
-                    "session": AttendanceSessionSerializer(session).data,
-                    "warning": "세션은 종료되었지만 라즈베리파이 응답이 올바르지 않음"
-                }, status=207)
-        except requests.RequestException:
+        success = notify_raspberry_pi_stop(session.id)
+        if not success:
             return Response({
                 "session": AttendanceSessionSerializer(session).data,
                 "warning": "세션은 종료되었지만 라즈베리파이에 연결할 수 없음"
             }, status=207)
-
         return Response(AttendanceSessionSerializer(session).data, status=200)
 
 # 출석통계 API
@@ -136,6 +142,17 @@ class AttendanceRecordCreateView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @swagger_auto_schema(
+        operation_summary="학생 출석 제출",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=["session_id"],
+            properties={
+                "session_id": openapi.Schema(type=openapi.TYPE_INTEGER, description="세션 ID"),
+                "status": openapi.Schema(type=openapi.TYPE_STRING, description="출석 상태", enum=["present", "late", "absent"]),
+            }
+        )
+    )
     def post(self, request):
         user = request.user  # JWT 인증된 사용자
         session_id = request.data.get('session_id')
@@ -222,3 +239,346 @@ class AttendanceStatisticsView(APIView):
             })
 
         return Response(data)
+
+
+class MyAttendanceRecordsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(manual_parameters=[
+        openapi.Parameter(
+            'lecture_id',
+            openapi.IN_QUERY,
+            description="강의 ID",
+            type=openapi.TYPE_INTEGER,
+            required=True
+        )
+    ])
+    def get(self, request):
+        user = request.user
+        lecture_id = request.query_params.get('lecture_id')
+
+        if user.role != 'student':
+            return Response({"error": "학생만 접근할 수 있습니다."}, status=403)
+
+        if not lecture_id:
+            return Response({"error": "lecture_id는 필수입니다."}, status=400)
+
+        try:
+            lecture = Lecture.objects.get(id=lecture_id)
+        except Lecture.DoesNotExist:
+            return Response({"error": "강의를 찾을 수 없습니다."}, status=404)
+
+        records = AttendanceRecord.objects.filter(student=user, session__lecture=lecture)
+
+        data = []
+        for record in records.order_by('session__week'):
+            data.append({
+                "week": record.session.week,
+                "status": record.status,
+                "timestamp": record.created_at.strftime("%Y-%m-%d %H:%M:%S")
+            })
+
+        return Response({
+            "lecture": lecture.name,
+            "student": user.name,
+            "records": data
+        })
+
+class ManualAttendanceUpdateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_summary="출석 수동 수정 (교수 전용)",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['lecture_id', 'week', 'student_id', 'status'],
+            properties={
+                'lecture_id': openapi.Schema(type=openapi.TYPE_INTEGER, description='강의 ID'),
+                'week': openapi.Schema(type=openapi.TYPE_INTEGER, description='주차'),
+                'student_id': openapi.Schema(type=openapi.TYPE_INTEGER, description='학생 ID'),
+                'status': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description='출석 상태 (present, late, absent)',
+                    enum=['present', 'late', 'absent']
+                ),
+            }
+        ),
+        responses={
+            200: openapi.Response(description="출석 상태 수정 완료"),
+            400: "잘못된 요청",
+            403: "권한 없음",
+            404: "데이터 없음"
+        }
+    )
+    def post(self, request):
+        lecture_id = request.data.get('lecture_id')
+        week = request.data.get('week')
+        student_id = request.data.get('student_id')
+        status_value = request.data.get('status')
+
+        if not lecture_id or not week or not student_id or not status_value:
+            return Response({"error": "lecture_id, week, student_id, status는 필수입니다."}, status=400)
+
+        try:
+            session = AttendanceSession.objects.get(lecture_id=lecture_id, week=week)
+        except AttendanceSession.DoesNotExist:
+            return Response({"error": "해당 강의의 해당 주차 세션이 존재하지 않습니다."}, status=404)
+
+        if session.lecture.professor != request.user:
+            return Response({"error": "해당 세션에 대한 수정 권한이 없습니다."}, status=403)
+
+        try:
+            student = User.objects.get(id=student_id, role='student')
+        except User.DoesNotExist:
+            return Response({"error": "학생 정보를 찾을 수 없습니다."}, status=404)
+
+        if not session.lecture.students.filter(id=student.id).exists():
+            return Response({"error": "해당 학생은 이 강의를 수강하지 않습니다."}, status=403)
+
+        record, created = AttendanceRecord.objects.get_or_create(
+            session=session,
+            student=student,
+            defaults={'status': status_value}
+        )
+        if not created and record.status != status_value:
+            from .models import AttendanceChangeLog
+            AttendanceChangeLog.objects.create(
+                professor=request.user,
+                student=student,
+                session=session,
+                old_status=record.status,
+                new_status=status_value
+            )
+            record.status = status_value
+            record.save()
+
+        return Response({
+            "message": "출석 상태 수정 완료" if not created else "출석 기록 생성 및 설정 완료",
+            "lecture": session.lecture.name,
+            "week": session.week,
+            "student": student.name,
+            "status": status_value
+        }, status=200)
+
+
+
+class ProfessorLectureListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(operation_summary="교수의 강의 목록 조회")
+    def get(self, request):
+        professor = request.user
+        if professor.role != 'professor':
+            return Response({"error": "접근 권한이 없습니다."}, status=403)
+
+        lectures = Lecture.objects.filter(professor=professor)
+        serializer = LectureSerializer(lectures, many=True)
+        return Response(serializer.data)
+
+class LectureSessionListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(operation_summary="해당 강의의 세션 목록 조회")
+    def get(self, request, lecture_id):
+        professor = request.user
+        try:
+            lecture = Lecture.objects.get(id=lecture_id, professor=professor)
+        except Lecture.DoesNotExist:
+            return Response({"error": "해당 강의가 없거나 권한이 없습니다."}, status=404)
+
+        sessions = AttendanceSession.objects.filter(lecture=lecture)
+        serializer = AttendanceSessionSerializer(sessions, many=True)
+        return Response(serializer.data)
+
+
+# 학생 이름 검색 API
+class StudentSearchView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(manual_parameters=[
+        openapi.Parameter('name', openapi.IN_QUERY, type=openapi.TYPE_STRING, description="학생 이름 검색"),
+        openapi.Parameter('lecture_id', openapi.IN_QUERY, type=openapi.TYPE_INTEGER, description="강의 ID", required=True),
+    ])
+    def get(self, request):
+        name = request.query_params.get('name', '')
+        lecture_id = request.query_params.get('lecture_id')
+
+        try:
+            lecture = Lecture.objects.get(id=lecture_id, professor=request.user)
+        except Lecture.DoesNotExist:
+            return Response({"error": "강의를 찾을 수 없습니다."}, status=404)
+
+        students = lecture.students.filter(name__icontains=name)
+        return Response([{"id": s.id, "name": s.name} for s in students])
+
+
+# 교수 출석 요약 통계 API
+class ProfessorAttendanceSummaryView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_summary="교수용 출석 요약 통계 API",
+        manual_parameters=[]
+    )
+    def get(self, request):
+        professor = request.user
+        if professor.role != 'professor':
+            return Response({"error": "접근 권한이 없습니다."}, status=403)
+
+        data = []
+        lectures = Lecture.objects.filter(professor=professor)
+
+        for lecture in lectures:
+            total_weeks = lecture.total_weeks
+            total_students = lecture.students.count()
+            total_records = AttendanceRecord.objects.filter(session__lecture=lecture)
+
+            present = total_records.filter(status='present').count()
+            late = total_records.filter(status='late').count()
+            absent = total_records.filter(status='absent').count()
+            total = total_students * total_weeks
+
+            rate = round((present + late * 0.5) / total * 100, 1) if total else 0
+
+            data.append({
+                "lecture": lecture.name,
+                "출석률": rate,
+                "출석": present,
+                "지각": late,
+                "결석": absent,
+                "총 학생": total_students,
+                "총 주차": total_weeks
+            })
+
+        return Response(data)
+
+
+class SessionAttendanceListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(manual_parameters=[
+        openapi.Parameter(
+            'session_id',
+            openapi.IN_PATH,
+            description="세션 ID",
+            type=openapi.TYPE_INTEGER,
+            required=True
+        )
+    ])
+
+    def get(self, request, session_id):
+        professor = request.user
+
+        try:
+            session = AttendanceSession.objects.get(id=session_id)
+        except AttendanceSession.DoesNotExist:
+            return Response({"error": "세션을 찾을 수 없습니다."}, status=404)
+
+        if session.lecture.professor != professor:
+            return Response({"error": "해당 세션에 접근할 수 없습니다."}, status=403)
+
+        records = AttendanceRecord.objects.filter(session=session)
+        serializer = AttendanceRecordSerializer(records, many=True)
+        return Response(serializer.data)
+
+
+# BLE 응답 출석 처리
+class BLEAttendanceView(APIView):
+    permission_classes = [AllowAny]
+
+    @swagger_auto_schema(
+        operation_summary="BLE 출석 처리",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=["student_id", "lecture_id", "session_id"],
+            properties={
+                "student_id": openapi.Schema(type=openapi.TYPE_INTEGER),
+                "lecture_id": openapi.Schema(type=openapi.TYPE_INTEGER),
+                "session_id": openapi.Schema(type=openapi.TYPE_INTEGER),
+            }
+        )
+    )
+    def post(self, request):
+        student_id = request.data.get("student_id")
+        lecture_id = request.data.get("lecture_id")
+        session_id = request.data.get("session_id")
+
+        try:
+            student = User.objects.get(id=student_id)
+            session = AttendanceSession.objects.get(id=session_id, lecture_id=lecture_id)
+        except (User.DoesNotExist, AttendanceSession.DoesNotExist):
+            return Response({"error": "학생 또는 세션을 찾을 수 없습니다."}, status=404)
+
+        if not session.lecture.students.filter(id=student.id).exists():
+            return Response({"error": "수강하지 않는 학생입니다."}, status=403)
+
+        record, created = AttendanceRecord.objects.get_or_create(
+            session=session,
+            student=student,
+            defaults={"status": "present"}
+        )
+
+        return Response({"message": "BLE 출석 완료" if created else "이미 출석 처리됨"})
+
+
+# QR 스캔 출석 처리
+class QRAttendanceView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_summary="QR 출석 처리",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=["session_id"],
+            properties={
+                "session_id": openapi.Schema(type=openapi.TYPE_INTEGER),
+            }
+        )
+    )
+    def post(self, request):
+        user = request.user
+        session_id = request.data.get("session_id")
+
+        try:
+            session = AttendanceSession.objects.get(id=session_id)
+        except AttendanceSession.DoesNotExist:
+            return Response({"error": "세션을 찾을 수 없습니다."}, status=404)
+
+        if not session.lecture.students.filter(id=user.id).exists():
+            return Response({"error": "수강하지 않는 학생입니다."}, status=403)
+
+        record, created = AttendanceRecord.objects.get_or_create(
+            session=session,
+            student=user,
+            defaults={"status": "present"}
+        )
+
+        return Response({"message": "QR 출석 완료" if created else "이미 출석 처리됨"})
+
+
+# QR 코드 생성 뷰
+class QRCodeGenerateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_summary="QR 코드 생성",
+        manual_parameters=[
+            openapi.Parameter(
+                "session_id", openapi.IN_QUERY,
+                type=openapi.TYPE_INTEGER,
+                required=True,
+                description="세션 ID"
+            )
+        ]
+    )
+    def get(self, request):
+        session_id = request.query_params.get("session_id")
+        if not session_id:
+            return Response({"error": "session_id는 필수입니다."}, status=400)
+
+        qr = qrcode.make(f"checkmate://attendance?session_id={session_id}")
+        buffered = BytesIO()
+        qr.save(buffered, format="PNG")
+        qr_base64 = base64.b64encode(buffered.getvalue()).decode()
+
+        return Response({"qr_image_base64": qr_base64})

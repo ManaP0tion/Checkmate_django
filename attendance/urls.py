@@ -1,12 +1,39 @@
 from django.urls import path
-from .views import StartAttendanceSessionView, EndAttendanceSessionView, StudentAttendanceStatsView, LectureCreateView, \
-    AttendanceRecordCreateView, AttendanceStatisticsView
+from .views import (
+    StartAttendanceSessionView, EndAttendanceSessionView,
+    StudentAttendanceStatsView, MyAttendanceRecordsView, AttendanceStatisticsView,
+    AttendanceRecordCreateView, ManualAttendanceUpdateView,
+    LectureCreateView, ProfessorLectureListView, LectureSessionListView,
+    BLEAttendanceView, QRAttendanceView, QRCodeGenerateView,
+    SessionAttendanceListView, StudentSearchView, ProfessorAttendanceSummaryView
+)
 
 urlpatterns = [
-    path('start-session/', StartAttendanceSessionView.as_view(), name='start_attendance_session'),
-    path('end-session/', EndAttendanceSessionView.as_view(), name='end_attendance_session'),
-    path("stats/<int:lecture_id>/", StudentAttendanceStatsView.as_view(), name="student_attendance_stats"),
-    path('create-lecture/', LectureCreateView.as_view(), name='create-lecture'),
-    path('submit-attendance/', AttendanceRecordCreateView.as_view(), name='submit-attendance'),
-    path('statistics/', AttendanceStatisticsView.as_view(), name='attendance-statistics')
+    # 세션 관리
+    path('sessions/start/', StartAttendanceSessionView.as_view(), name='start-attendance-session'),
+    path('sessions/end/', EndAttendanceSessionView.as_view(), name='end-attendance-session'),
+    path('sessions/<int:lecture_id>/list/', LectureSessionListView.as_view(), name='lecture-session-list'),
+    path('sessions/<int:session_id>/attendance/', SessionAttendanceListView.as_view(), name='session-attendance-list'),
+
+    # 강의 관련
+    path('lectures/create/', LectureCreateView.as_view(), name='create-lecture'),
+    path('lectures/my/', ProfessorLectureListView.as_view(), name='my-lectures'),
+
+    # 출석 처리
+    path('attendance/submit/', AttendanceRecordCreateView.as_view(), name='submit-attendance'),
+    path('attendance/manual-update/', ManualAttendanceUpdateView.as_view(), name='manual-attendance-update'),
+
+    # 출석 통계
+    path('attendance/statistics/', AttendanceStatisticsView.as_view(), name='attendance-statistics'),
+    path('attendance/my-records/', MyAttendanceRecordsView.as_view(), name='my-attendance-records'),
+    path('attendance/stats/<int:lecture_id>/', StudentAttendanceStatsView.as_view(), name='student-attendance-stats'),
+    path('attendance/summary/', ProfessorAttendanceSummaryView.as_view(), name='attendance-summary'),
+
+    # BLE / QR 출석
+    path('attendance/ble/', BLEAttendanceView.as_view(), name='ble-attendance'),
+    path('attendance/qr/', QRAttendanceView.as_view(), name='qr-attendance'),
+    path('attendance/qr/generate/', QRCodeGenerateView.as_view(), name='generate-qr'),
+
+    # 학생 검색
+    path('students/search/', StudentSearchView.as_view(), name='search-students'),
 ]

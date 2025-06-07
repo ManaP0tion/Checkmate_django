@@ -30,3 +30,11 @@ class AttendanceRecord(models.Model):
 
     class Meta:
         unique_together = ('session', 'student')
+
+class AttendanceChangeLog(models.Model):
+    professor = models.ForeignKey(User, on_delete=models.CASCADE, related_name="change_logs")
+    student = models.ForeignKey(User, on_delete=models.CASCADE, related_name="changed_logs")
+    session = models.ForeignKey(AttendanceSession, on_delete=models.CASCADE)
+    old_status = models.CharField(max_length=10)
+    new_status = models.CharField(max_length=10)
+    changed_at = models.DateTimeField(auto_now_add=True)
