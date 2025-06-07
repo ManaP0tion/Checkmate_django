@@ -8,9 +8,9 @@ schema_view = get_schema_view(
     openapi.Info(
         title="Checkmate API",
         default_version='v1',
-
+        description="출석 시스템 API 문서",
     ),
-    public =True,
+    public=True,
     permission_classes=(permissions.AllowAny,),
 )
 
@@ -23,5 +23,6 @@ urlpatterns = [
     # 🔽 ReDoc
     path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
     path("api/ble/", include("ble.urls")),  # BLE mock API 연결
-    path('api/attendance/', include('attendance.urls'))
+    path('api/attendance/', include('attendance.urls')),
+    path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui')
 ]

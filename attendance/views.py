@@ -1,9 +1,12 @@
 import requests
+from drf_yasg import openapi
+from drf_yasg.utils import swagger_auto_schema
 from rest_framework import generics, status
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from users.models import User
 from .models import AttendanceSession, Lecture, AttendanceRecord
 from .serializers import AttendanceSessionSerializer, LectureCreateSerializer
 
@@ -125,41 +128,97 @@ class LectureCreateView(generics.CreateAPIView):
     permission_classes = [IsAdminUser]  # 관리자만 등록 가능
 
 class AttendanceRecordCreateView(APIView):
-    def post(self, request):
-        student_id = request.data.get('student_id')
-        session_id = request.data.get('session_id')
-        status_value = request.data.get('status', 'present')  # 기본값 'present'
+    """
+    학생 출석 제출 API
+    - 인증된 학생만 출석 가능
+    - 세션 ID를 통해 활성 세션 확인
+    - 해당 학생이 수강 중인지 검증 후 출석 처리
+    """
+    permission_classes = [IsAuthenticated]
 
-        # 필수값 확인
-        if not student_id or not session_id:
-            return Response({"error": "student_id와 session_id는 필수입니다."}, status=400)
+    def post(self, request):
+        user = request.user  # JWT 인증된 사용자
+        session_id = request.data.get('session_id')
+        status_value = request.data.get('status', 'present')  # 기본값은 출석
+
+        # 1. 사용자 권한 확인
+        if user.role != 'student':
+            return Response({"error": "학생만 출석할 수 있습니다."}, status=403)
+
+        # 2. 세션 유효성 확인
+        if not session_id:
+            return Response({"error": "session_id는 필수입니다."}, status=400)
 
         try:
             session = AttendanceSession.objects.get(id=session_id, is_active=True)
         except AttendanceSession.DoesNotExist:
-            return Response({"error": "세션을 찾을 수 없습니다."}, status=404)
+            return Response({"error": "활성화된 출석 세션이 존재하지 않습니다."}, status=404)
 
-        try:
-            student = User.objects.get(id=student_id, role='student')
-        except User.DoesNotExist:
-            return Response({"error": "유효한 학생 정보가 아닙니다."}, status=404)
+        # 3. 수강 여부 확인
+        if not session.lecture.students.filter(id=user.id).exists():
+            return Response({"error": "해당 강의를 수강하지 않습니다."}, status=403)
 
-        # 🔐 출석 가능한 학생인지 확인
-        if not session.lecture.students.filter(id=student.id).exists():
-            return Response({"error": "해당 강의를 수강하지 않는 학생입니다."}, status=403)
-
-        # ✅ 출석 기록 저장
+        # 4. 출석 기록 생성 또는 확인
         record, created = AttendanceRecord.objects.get_or_create(
             session=session,
-            student=student,
+            student=user,
             defaults={'status': status_value}
         )
 
         return Response({
-            "message": "출석 처리 완료" if created else "이미 출석 처리됨",
+            "message": "출석 완료" if created else "이미 출석 처리됨",
             "data": {
                 "session": session.id,
-                "student": student.name,
+                "student": user.name,
                 "status": status_value
             }
         }, status=200)
+
+class AttendanceStatisticsView(APIView):
+    permission_classes = [IsAuthenticated]
+    @swagger_auto_schema(manual_parameters=[
+        openapi.Parameter(
+            'lecture_id',
+            openapi.IN_QUERY,
+            description="강의 ID",
+            type=openapi.TYPE_INTEGER,
+            required=True
+        )
+    ])
+
+    def get(self, request):
+        lecture_id = request.query_params.get('lecture_id')
+        if not lecture_id:
+            return Response({"error": "lecture_id는 필수입니다."}, status=400)
+
+        try:
+            lecture = Lecture.objects.get(id=lecture_id)
+        except Lecture.DoesNotExist:
+            return Response({"error": "강의를 찾을 수 없습니다."}, status=404)
+
+        total_weeks = lecture.total_weeks
+        data = {
+            "lecture": lecture.name,
+            "total_weeks": total_weeks,
+            "students": []
+        }
+
+        for student in lecture.students.all():
+            records = AttendanceRecord.objects.filter(student=student, session__lecture=lecture)
+            present = records.filter(status='출석').count()
+            late = records.filter(status='지각').count()
+            absent = records.filter(status='결석').count()
+            total = present + late + absent
+
+            attendance_rate = round((present + late * 0.5) / total_weeks * 100, 1) if total_weeks else 0
+
+            data["students"].append({
+                "student_id": student.id,
+                "name": student.name,
+                "출석": present,
+                "지각": late,
+                "결석": absent,
+                "출석률": attendance_rate
+            })
+
+        return Response(data)

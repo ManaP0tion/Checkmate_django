@@ -140,3 +140,15 @@ SIMPLE_JWT = {
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),        # 리프레시 토큰 유효 시간 (7일)
     'AUTH_HEADER_TYPES': ('Bearer',),                   # 헤더 토큰 타입: "Bearer <token>"
 }
+
+
+SWAGGER_SETTINGS = {
+    'SECURITY_DEFINITIONS': {
+        'Bearer': {
+            'type': 'apiKey',
+            'name': 'Authorization',
+            'in': 'header',
+            'description': 'JWT Authorization header using the Bearer scheme. Example: "Bearer {token}"'
+        }
+    }
+}
