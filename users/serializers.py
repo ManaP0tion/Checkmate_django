@@ -64,8 +64,10 @@ class RegisterSerializer(serializers.ModelSerializer):
         user.save()
         return user
 
+from rest_framework import serializers
+from .models import User
 
 class UserInfoSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ['id', 'username', 'name', 'email', 'role']
+        fields = ['id', 'username', 'name', 'email', 'role', 'major', 'department']
