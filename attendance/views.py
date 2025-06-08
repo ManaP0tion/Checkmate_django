@@ -1,3 +1,4 @@
+import requests
 from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
 from rest_framework import generics, status
 from rest_framework.response import Response
@@ -17,7 +18,8 @@ from .serializers import (
     LectureSerializer,
     AttendanceRecordSerializer
 )
-from .utils.raspberry_pi import notify_raspberry_pi_start, notify_raspberry_pi_stop
+from .utils.raspberry_pi import notify_raspberry_pi_start, notify_raspberry_pi_stop, check_raspberry_pi_connection
+
 
 # 출석 시작 (세션 생성)
 class StartAttendanceSessionView(APIView):
@@ -582,3 +584,13 @@ class QRCodeGenerateView(APIView):
         qr_base64 = base64.b64encode(buffered.getvalue()).decode()
 
         return Response({"qr_image_base64": qr_base64})
+
+
+class RaspberryPiConnectionCheckView(APIView):
+    def get(self, request):
+        try:
+            response = requests.get("http://192.168.137.119:5000/ping", timeout=2)
+            if response.status_code == 200:
+                return Response({"connected": True})
+        except requests.RequestException:
+            return Response({"connected": False})

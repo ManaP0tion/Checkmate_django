@@ -5,7 +5,8 @@ from .views import (
     AttendanceRecordCreateView, ManualAttendanceUpdateView,
     LectureCreateView, ProfessorLectureListView, LectureSessionListView,
     BLEAttendanceView, QRAttendanceView, QRCodeGenerateView,
-    SessionAttendanceListView, StudentSearchView, ProfessorAttendanceSummaryView
+    SessionAttendanceListView, StudentSearchView, ProfessorAttendanceSummaryView,
+    RaspberryPiConnectionCheckView
 )
 
 urlpatterns = [
@@ -33,7 +34,11 @@ urlpatterns = [
     path('attendance/ble/', BLEAttendanceView.as_view(), name='ble-attendance'),
     path('attendance/qr/', QRAttendanceView.as_view(), name='qr-attendance'),
     path('attendance/qr/generate/', QRCodeGenerateView.as_view(), name='generate-qr'),
+    path('raspi-check/', RaspberryPiConnectionCheckView.as_view(), name='raspi-check'),
 
     # 학생 검색
     path('students/search/', StudentSearchView.as_view(), name='search-students'),
+
+
+
 ]

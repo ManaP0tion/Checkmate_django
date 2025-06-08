@@ -41,10 +41,12 @@ INSTALLED_APPS = [
     'drf_yasg',
     'users',
     'attendance',
-    'ble'
+    'ble',
+    'corsheaders',
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',  # 반드시 가장 위에 추가
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -52,6 +54,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'django.middleware.common.CommonMiddleware',
 ]
 
 ROOT_URLCONF = 'Checkmate_Backend.urls'
@@ -152,3 +155,5 @@ SWAGGER_SETTINGS = {
         }
     }
 }
+
+CORS_ALLOW_ALL_ORIGINS = True
