@@ -99,11 +99,22 @@ class EndAttendanceSessionView(APIView):
 class StudentAttendanceStatsView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def get(self, request, lecture_id):
+    @swagger_auto_schema(
+        manual_parameters=[
+            openapi.Parameter(
+                'lecture_code',
+                openapi.IN_PATH,
+                description="강의 코드",
+                type=openapi.TYPE_STRING,
+                required=True
+            )
+        ]
+    )
+    def get(self, request, lecture_code):
         user = request.user
 
         try:
-            lecture = Lecture.objects.get(id=lecture_id)
+            lecture = Lecture.objects.get(code=lecture_code)
         except Lecture.DoesNotExist:
             return Response({"error": "강의를 찾을 수 없습니다."}, status=404)
 
@@ -148,16 +159,16 @@ class AttendanceRecordCreateView(APIView):
         operation_summary="학생 출석 제출",
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
-            required=["session_id"],
+            required=["session_code"],
             properties={
-                "session_id": openapi.Schema(type=openapi.TYPE_INTEGER, description="세션 ID"),
+                "session_code": openapi.Schema(type=openapi.TYPE_STRING, description="세션 코드 (예: CS101_2)"),
                 "status": openapi.Schema(type=openapi.TYPE_STRING, description="출석 상태", enum=["present", "late", "absent"]),
             }
         )
     )
     def post(self, request):
         user = request.user  # JWT 인증된 사용자
-        session_id = request.data.get('session_id')
+        session_code = request.data.get('session_code')
         status_value = request.data.get('status', 'present')  # 기본값은 출석
 
         # 1. 사용자 권한 확인
@@ -165,11 +176,11 @@ class AttendanceRecordCreateView(APIView):
             return Response({"error": "학생만 출석할 수 있습니다."}, status=403)
 
         # 2. 세션 유효성 확인
-        if not session_id:
-            return Response({"error": "session_id는 필수입니다."}, status=400)
+        if not session_code:
+            return Response({"error": "session_code는 필수입니다."}, status=400)
 
         try:
-            session = AttendanceSession.objects.get(id=session_id, is_active=True)
+            session = AttendanceSession.objects.get(session_code=session_code, is_active=True)
         except AttendanceSession.DoesNotExist:
             return Response({"error": "활성화된 출석 세션이 존재하지 않습니다."}, status=404)
 
@@ -197,21 +208,21 @@ class AttendanceStatisticsView(APIView):
     permission_classes = [IsAuthenticated]
     @swagger_auto_schema(manual_parameters=[
         openapi.Parameter(
-            'lecture_id',
+            'lecture_code',
             openapi.IN_QUERY,
-            description="강의 ID",
-            type=openapi.TYPE_INTEGER,
+            description="강의 코드",
+            type=openapi.TYPE_STRING,
             required=True
         )
     ])
 
     def get(self, request):
-        lecture_id = request.query_params.get('lecture_id')
-        if not lecture_id:
-            return Response({"error": "lecture_id는 필수입니다."}, status=400)
+        lecture_code = request.query_params.get('lecture_code')
+        if not lecture_code:
+            return Response({"error": "lecture_code는 필수입니다."}, status=400)
 
         try:
-            lecture = Lecture.objects.get(id=lecture_id)
+            lecture = Lecture.objects.get(code=lecture_code)
         except Lecture.DoesNotExist:
             return Response({"error": "강의를 찾을 수 없습니다."}, status=404)
 
@@ -248,25 +259,25 @@ class MyAttendanceRecordsView(APIView):
 
     @swagger_auto_schema(manual_parameters=[
         openapi.Parameter(
-            'lecture_id',
+            'lecture_code',
             openapi.IN_QUERY,
-            description="강의 ID",
-            type=openapi.TYPE_INTEGER,
+            description="강의 코드",
+            type=openapi.TYPE_STRING,
             required=True
         )
     ])
     def get(self, request):
         user = request.user
-        lecture_id = request.query_params.get('lecture_id')
+        lecture_code = request.query_params.get('lecture_code')
 
         if user.role != 'student':
             return Response({"error": "학생만 접근할 수 있습니다."}, status=403)
 
-        if not lecture_id:
-            return Response({"error": "lecture_id는 필수입니다."}, status=400)
+        if not lecture_code:
+            return Response({"error": "lecture_code는 필수입니다."}, status=400)
 
         try:
-            lecture = Lecture.objects.get(id=lecture_id)
+            lecture = Lecture.objects.get(code=lecture_code)
         except Lecture.DoesNotExist:
             return Response({"error": "강의를 찾을 수 없습니다."}, status=404)
 
@@ -293,11 +304,11 @@ class ManualAttendanceUpdateView(APIView):
         operation_summary="출석 수동 수정 (교수 전용)",
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
-            required=['lecture_id', 'week', 'student_id', 'status'],
+            required=['lecture_code', 'week', 'student_username', 'status'],
             properties={
-                'lecture_id': openapi.Schema(type=openapi.TYPE_INTEGER, description='강의 ID'),
+                'lecture_code': openapi.Schema(type=openapi.TYPE_STRING, description='강의 코드'),
                 'week': openapi.Schema(type=openapi.TYPE_INTEGER, description='주차'),
-                'student_id': openapi.Schema(type=openapi.TYPE_INTEGER, description='학생 ID'),
+                'student_username': openapi.Schema(type=openapi.TYPE_STRING, description='학생 학번 (username)'),
                 'status': openapi.Schema(
                     type=openapi.TYPE_STRING,
                     description='출석 상태 (present, late, absent)',
@@ -313,16 +324,19 @@ class ManualAttendanceUpdateView(APIView):
         }
     )
     def post(self, request):
-        lecture_id = request.data.get('lecture_id')
+        lecture_code = request.data.get('lecture_code')
         week = request.data.get('week')
-        student_id = request.data.get('student_id')
+        student_username = request.data.get('student_username')
         status_value = request.data.get('status')
 
-        if not lecture_id or not week or not student_id or not status_value:
-            return Response({"error": "lecture_id, week, student_id, status는 필수입니다."}, status=400)
+        if not lecture_code or not week or not student_username or not status_value:
+            return Response({"error": "lecture_code, week, student_username, status는 필수입니다."}, status=400)
 
         try:
-            session = AttendanceSession.objects.get(lecture_id=lecture_id, week=week)
+            lecture = Lecture.objects.get(code=lecture_code, professor=request.user)
+            session = AttendanceSession.objects.get(lecture=lecture, week=week)
+        except Lecture.DoesNotExist:
+            return Response({"error": "해당 강의를 찾을 수 없습니다."}, status=404)
         except AttendanceSession.DoesNotExist:
             return Response({"error": "해당 강의의 해당 주차 세션이 존재하지 않습니다."}, status=404)
 
@@ -330,7 +344,7 @@ class ManualAttendanceUpdateView(APIView):
             return Response({"error": "해당 세션에 대한 수정 권한이 없습니다."}, status=403)
 
         try:
-            student = User.objects.get(id=student_id, role='student')
+            student = User.objects.get(username=student_username, role='student')
         except User.DoesNotExist:
             return Response({"error": "학생 정보를 찾을 수 없습니다."}, status=404)
 
@@ -380,11 +394,22 @@ class ProfessorLectureListView(APIView):
 class LectureSessionListView(APIView):
     permission_classes = [IsAuthenticated]
 
-    @swagger_auto_schema(operation_summary="해당 강의의 세션 목록 조회")
-    def get(self, request, lecture_id):
+    @swagger_auto_schema(
+        operation_summary="해당 강의의 세션 목록 조회",
+        manual_parameters=[
+            openapi.Parameter(
+                'lecture_code',
+                openapi.IN_PATH,
+                description="강의 코드",
+                type=openapi.TYPE_STRING,
+                required=True
+            )
+        ]
+    )
+    def get(self, request, lecture_code):
         professor = request.user
         try:
-            lecture = Lecture.objects.get(id=lecture_id, professor=professor)
+            lecture = Lecture.objects.get(code=lecture_code, professor=professor)
         except Lecture.DoesNotExist:
             return Response({"error": "해당 강의가 없거나 권한이 없습니다."}, status=404)
 
@@ -602,23 +627,23 @@ class WeeklyAttendanceView(APIView):
     @swagger_auto_schema(
         operation_summary="주차별 전체 학생 출결 조회",
         manual_parameters=[
-            openapi.Parameter('lecture_id', openapi.IN_QUERY, type=openapi.TYPE_INTEGER, required=True, description="강의 ID"),
+            openapi.Parameter('lecture_code', openapi.IN_QUERY, type=openapi.TYPE_STRING, required=True, description="강의 코드"),
             openapi.Parameter('week', openapi.IN_QUERY, type=openapi.TYPE_INTEGER, required=True, description="주차"),
         ]
     )
     def get(self, request):
         professor = request.user
-        lecture_id = request.query_params.get("lecture_id")
+        lecture_code = request.query_params.get("lecture_code")
         week = request.query_params.get("week")
 
         if professor.role != 'professor':
             return Response({"error": "접근 권한이 없습니다."}, status=403)
 
-        if not lecture_id or not week:
-            return Response({"error": "lecture_id와 week는 필수입니다."}, status=400)
+        if not lecture_code or not week:
+            return Response({"error": "lecture_code와 week는 필수입니다."}, status=400)
 
         try:
-            lecture = Lecture.objects.get(id=lecture_id, professor=professor)
+            lecture = Lecture.objects.get(code=lecture_code, professor=professor)
         except Lecture.DoesNotExist:
             return Response({"error": "강의를 찾을 수 없습니다."}, status=404)
 
@@ -629,11 +654,15 @@ class WeeklyAttendanceView(APIView):
 
         results = []
         for student in lecture.students.all():
-            record = AttendanceRecord.objects.filter(session=session, student=student).first()
+            record, created = AttendanceRecord.objects.get_or_create(
+                session=session,
+                student=student,
+                defaults={"status": "absent"}
+            )
             results.append({
                 "student_id": student.id,
                 "student_name": student.name,
-                "status": record.status if record else "미제출"
+                "status": record.status
             })
 
         return Response({

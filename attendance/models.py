@@ -17,6 +17,12 @@ class AttendanceSession(models.Model):
     week = models.PositiveIntegerField()
     created_at = models.DateTimeField(auto_now_add=True)
     is_active = models.BooleanField(default=True)
+    session_code = models.CharField(max_length=20, unique=True, blank=True, null=True)
+
+    def save(self, *args, **kwargs):
+        if not self.session_code:
+            self.session_code = f"{self.lecture.code}_{self.week}"
+        super().save(*args, **kwargs)
 
 class AttendanceRecord(models.Model):
     session = models.ForeignKey(AttendanceSession, on_delete=models.CASCADE)
