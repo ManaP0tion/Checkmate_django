@@ -13,7 +13,7 @@ urlpatterns = [
     # 세션 관리
     path('sessions/start/', StartAttendanceSessionView.as_view(), name='start-attendance-session'),
     path('sessions/end/', EndAttendanceSessionView.as_view(), name='end-attendance-session'),
-    path('sessions/<int:lecture_id>/list/', LectureSessionListView.as_view(), name='lecture-session-list'),
+    path('sessions/<str:lecture_code>/list/', LectureSessionListView.as_view(), name='lecture-sessions'),
     path('sessions/<int:session_id>/attendance/', SessionAttendanceListView.as_view(), name='session-attendance-list'),
 
     # 강의 관련
@@ -27,7 +27,7 @@ urlpatterns = [
     # 출석 통계
     path('attendance/statistics/', AttendanceStatisticsView.as_view(), name='attendance-statistics'),
     path('attendance/my-records/', MyAttendanceRecordsView.as_view(), name='my-attendance-records'),
-    path('attendance/stats/<int:lecture_id>/', StudentAttendanceStatsView.as_view(), name='student-attendance-stats'),
+    path('attendance/stats/<str:lecture_code>/', StudentAttendanceStatsView.as_view(), name='student-attendance-stats'),
     path('attendance/summary/', ProfessorAttendanceSummaryView.as_view(), name='attendance-summary'),
 
     # BLE / QR 출석
@@ -38,6 +38,7 @@ urlpatterns = [
 
     # 학생 검색
     path('students/search/', StudentSearchView.as_view(), name='search-students'),
+    path('my-lectures/', MyLectureListView.as_view(), name='my-lecture-list'),
 
     path('weekly/', WeeklyAttendanceView.as_view()),  # 교수용 주차별 출석 조회
     path('my-lectures/', MyLectureListView.as_view()),

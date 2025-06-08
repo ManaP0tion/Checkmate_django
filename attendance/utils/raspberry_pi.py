@@ -5,8 +5,7 @@ RASPBERRY_PI_PORT = 5000
 
 def notify_raspberry_pi_start(session):
     payload = {
-        "lecture_id": session.lecture.id,
-        "session_id": session.id,
+        "session_id": session.id,  # 예: "CS101_2"
         "professor_username": session.lecture.professor.username
     }
     try:
