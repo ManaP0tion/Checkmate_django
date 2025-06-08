@@ -6,7 +6,7 @@ from .views import (
     LectureCreateView, ProfessorLectureListView, LectureSessionListView,
     BLEAttendanceView, QRAttendanceView, QRCodeGenerateView,
     SessionAttendanceListView, StudentSearchView, ProfessorAttendanceSummaryView,
-    RaspberryPiConnectionCheckView
+    RaspberryPiConnectionCheckView, MyLectureListView, WeeklyAttendanceView
 )
 
 urlpatterns = [
@@ -39,6 +39,8 @@ urlpatterns = [
     # 학생 검색
     path('students/search/', StudentSearchView.as_view(), name='search-students'),
 
+    path('weekly/', WeeklyAttendanceView.as_view()),  # 교수용 주차별 출석 조회
+    path('my-lectures/', MyLectureListView.as_view()),
 
 
 ]

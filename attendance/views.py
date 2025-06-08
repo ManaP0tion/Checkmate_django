@@ -594,3 +594,70 @@ class RaspberryPiConnectionCheckView(APIView):
                 return Response({"connected": True})
         except requests.RequestException:
             return Response({"connected": False})
+
+# 교수용: 주차별 전체 학생 출결 조회 API
+class WeeklyAttendanceView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_summary="주차별 전체 학생 출결 조회",
+        manual_parameters=[
+            openapi.Parameter('lecture_id', openapi.IN_QUERY, type=openapi.TYPE_INTEGER, required=True, description="강의 ID"),
+            openapi.Parameter('week', openapi.IN_QUERY, type=openapi.TYPE_INTEGER, required=True, description="주차"),
+        ]
+    )
+    def get(self, request):
+        professor = request.user
+        lecture_id = request.query_params.get("lecture_id")
+        week = request.query_params.get("week")
+
+        if professor.role != 'professor':
+            return Response({"error": "접근 권한이 없습니다."}, status=403)
+
+        if not lecture_id or not week:
+            return Response({"error": "lecture_id와 week는 필수입니다."}, status=400)
+
+        try:
+            lecture = Lecture.objects.get(id=lecture_id, professor=professor)
+        except Lecture.DoesNotExist:
+            return Response({"error": "강의를 찾을 수 없습니다."}, status=404)
+
+        try:
+            session = AttendanceSession.objects.get(lecture=lecture, week=week)
+        except AttendanceSession.DoesNotExist:
+            return Response({"error": "해당 주차의 세션이 존재하지 않습니다."}, status=404)
+
+        results = []
+        for student in lecture.students.all():
+            record = AttendanceRecord.objects.filter(session=session, student=student).first()
+            results.append({
+                "student_id": student.id,
+                "student_name": student.name,
+                "status": record.status if record else "미제출"
+            })
+
+        return Response({
+            "lecture": lecture.name,
+            "week": week,
+            "records": results
+        })
+
+
+# 학생용: 내 수강 강의 리스트 조회
+class MyLectureListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(operation_summary="학생의 수강 강의 목록 조회")
+    def get(self, request):
+        user = request.user
+        if user.role != 'student':
+            return Response({"error": "학생만 접근 가능합니다."}, status=403)
+
+        lectures = Lecture.objects.filter(students=user)
+        return Response([
+            {
+                "lecture_id": l.id,
+                "name": l.name,
+                "professor": l.professor.name
+            } for l in lectures
+        ])
