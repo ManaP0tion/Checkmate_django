@@ -289,8 +289,7 @@ class MyAttendanceRecordsView(APIView):
         for record in records.order_by('session__week'):
             data.append({
                 "week": record.session.week,
-                "status": record.status,
-                "timestamp": record.created_at.strftime("%Y-%m-%d %H:%M:%S")
+                "status": record.status
             })
 
         return Response({
