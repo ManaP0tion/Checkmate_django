@@ -71,18 +71,18 @@ class EndAttendanceSessionView(APIView):
             type=openapi.TYPE_OBJECT,
             required=["session_id"],
             properties={
-                "session_id": openapi.Schema(type=openapi.TYPE_INTEGER, description="세션 ID"),
+                "session_id": openapi.Schema(type=openapi.TYPE_STRING, description="세션 ID"),
             }
         )
     )
     def post(self, request):
-        session_id = request.data.get('session_id')
+        session_id = str(request.data.get('session_id'))
 
         if not session_id:
             return Response({"error": "session_id는 필수입니다."}, status=400)
 
         try:
-            session = AttendanceSession.objects.get(id=session_id, is_active=True)
+            session = AttendanceSession.objects.get(session_code=session_id, is_active=True)
         except AttendanceSession.DoesNotExist:
             return Response({"error": "활성화된 세션을 찾을 수 없습니다."}, status=404)
 
