@@ -559,13 +559,13 @@ class QRAttendanceView(APIView):
             type=openapi.TYPE_OBJECT,
             required=["session_id"],
             properties={
-                "session_id": openapi.Schema(type=openapi.TYPE_INTEGER),
+                "session_id": openapi.Schema(type=openapi.TYPE_STRING, description="세션 코드 (예: CS101_2)"),
             }
         )
     )
     def post(self, request):
         user = request.user
-        session_id = request.data.get("session_id")
+        session_id = int(request.data.get("session_id"))
 
         try:
             session = AttendanceSession.objects.get(id=session_id)
