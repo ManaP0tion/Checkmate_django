@@ -424,14 +424,14 @@ class StudentSearchView(APIView):
 
     @swagger_auto_schema(manual_parameters=[
         openapi.Parameter('name', openapi.IN_QUERY, type=openapi.TYPE_STRING, description="학생 이름 검색"),
-        openapi.Parameter('lecture_id', openapi.IN_QUERY, type=openapi.TYPE_INTEGER, description="강의 ID", required=True),
+        openapi.Parameter('lecture_code', openapi.IN_QUERY, type=openapi.TYPE_STRING, description="강의 코드", required=True),
     ])
     def get(self, request):
         name = request.query_params.get('name', '')
-        lecture_id = request.query_params.get('lecture_id')
+        lecture_code = request.query_params.get('lecture_code')
 
         try:
-            lecture = Lecture.objects.get(id=lecture_id, professor=request.user)
+            lecture = Lecture.objects.get(code=lecture_code, professor=request.user)
         except Lecture.DoesNotExist:
             return Response({"error": "강의를 찾을 수 없습니다."}, status=404)
 
