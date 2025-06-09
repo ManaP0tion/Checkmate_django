@@ -486,19 +486,19 @@ class SessionAttendanceListView(APIView):
 
     @swagger_auto_schema(manual_parameters=[
         openapi.Parameter(
-            'session_id',
+            'session_code',
             openapi.IN_PATH,
-            description="세션 ID",
-            type=openapi.TYPE_INTEGER,
+            description="세션 코드 (예: CS101_2)",
+            type=openapi.TYPE_STRING,
             required=True
         )
     ])
 
-    def get(self, request, session_id):
+    def get(self, request, session_code):
         professor = request.user
 
         try:
-            session = AttendanceSession.objects.get(id=session_id)
+            session = AttendanceSession.objects.get(session_code=session_code)
         except AttendanceSession.DoesNotExist:
             return Response({"error": "세션을 찾을 수 없습니다."}, status=404)
 
