@@ -565,10 +565,10 @@ class QRAttendanceView(APIView):
     )
     def post(self, request):
         user = request.user
-        session_id = int(request.data.get("session_id"))
+        session_id = str(request.data.get("session_id"))
 
         try:
-            session = AttendanceSession.objects.get(id=session_id)
+            session = AttendanceSession.objects.get(session_code=session_id)
         except AttendanceSession.DoesNotExist:
             return Response({"error": "세션을 찾을 수 없습니다."}, status=404)
 
