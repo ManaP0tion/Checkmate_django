@@ -1,4 +1,5 @@
 import requests
+from django.http import HttpResponse
 from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
 from rest_framework import generics, status
 from rest_framework.response import Response
@@ -7,6 +8,7 @@ from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
 
 import qrcode
+print("QR module loaded from:", qrcode.__file__)
 import base64
 from io import BytesIO
 
@@ -27,22 +29,22 @@ class StartAttendanceSessionView(APIView):
         operation_summary="출석 세션 시작",
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
-            required=["lecture", "week"],
+            required=["lecture_code", "week"],
             properties={
-                "lecture": openapi.Schema(type=openapi.TYPE_INTEGER, description="강의 ID"),
+                "lecture_code": openapi.Schema(type=openapi.TYPE_STRING, description="강의 코드"),
                 "week": openapi.Schema(type=openapi.TYPE_INTEGER, description="주차"),
             }
         )
     )
     def post(self, request):
-        lecture_id = request.data.get('lecture')
+        lecture_code = request.data.get('lecture_code')
         week = request.data.get('week')
 
-        if not lecture_id or not week:
-            return Response({"error": "lecture와 week는 필수입니다."}, status=400)
+        if not lecture_code or not week:
+            return Response({"error": "lecture_code와 week는 필수입니다."}, status=400)
 
         try:
-            lecture = Lecture.objects.get(id=lecture_id)
+            lecture = Lecture.objects.get(code=lecture_code)
         except Lecture.DoesNotExist:
             return Response({"error": "해당 강의를 찾을 수 없습니다."}, status=404)
 
@@ -592,7 +594,7 @@ class QRCodeGenerateView(APIView):
         manual_parameters=[
             openapi.Parameter(
                 "session_id", openapi.IN_QUERY,
-                type=openapi.TYPE_INTEGER,
+                type=openapi.TYPE_STRING,
                 required=True,
                 description="세션 ID"
             )
@@ -602,6 +604,7 @@ class QRCodeGenerateView(APIView):
         session_id = request.query_params.get("session_id")
         if not session_id:
             return Response({"error": "session_id는 필수입니다."}, status=400)
+        session_id = str(session_id)
 
         qr = qrcode.make(f"checkmate://attendance?session_id={session_id}")
         buffered = BytesIO()
@@ -724,3 +727,16 @@ class LectureStudentListView(APIView):
                 "department": s.department,
             } for s in students
         ])
+
+def qr_image_view(request):
+    session_code = request.GET.get("session_code")
+    if not session_code:
+        return HttpResponse("session_code 파라미터가 필요합니다.", status=400)
+
+    # QR 생성
+    qr = qrcode.make(f"checkmate://attendance?session_code={session_code}")
+    buffer = BytesIO()
+    qr.save(buffer, format="PNG")
+
+    # 이미지 응답
+    return HttpResponse(buffer.getvalue(), content_type="image/png")

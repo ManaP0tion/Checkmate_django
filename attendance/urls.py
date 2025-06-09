@@ -6,7 +6,7 @@ from .views import (
     LectureCreateView, ProfessorLectureListView, LectureSessionListView,
     BLEAttendanceView, QRAttendanceView, QRCodeGenerateView,
     SessionAttendanceListView, StudentSearchView, ProfessorAttendanceSummaryView,
-    RaspberryPiConnectionCheckView, MyLectureListView, WeeklyAttendanceView, LectureStudentListView
+    RaspberryPiConnectionCheckView, MyLectureListView, WeeklyAttendanceView, LectureStudentListView, qr_image_view
 )
 
 urlpatterns = [
@@ -43,7 +43,7 @@ urlpatterns = [
     path('weekly/', WeeklyAttendanceView.as_view()),  # 교수용 주차별 출석 조회
     path('my-lectures/', MyLectureListView.as_view()),
 
-    path('lectures/students/', LectureStudentListView.as_view(), name='lecture-students')
+    path('lectures/students/', LectureStudentListView.as_view(), name='lecture-students'),
 
-
+    path('qr/image', qr_image_view, name='qr-image-view')
 ]
