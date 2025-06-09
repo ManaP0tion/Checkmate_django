@@ -686,7 +686,41 @@ class MyLectureListView(APIView):
         return Response([
             {
                 "lecture_id": l.id,
+                "lecture_code": l.code, # 코드도 받도록 반영
                 "name": l.name,
                 "professor": l.professor.name
             } for l in lectures
+        ])
+
+# 특정강의 수강학생 조회 API
+class LectureStudentListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_summary="특정 강의 수강 학생 목록 조회",
+        manual_parameters=[
+            openapi.Parameter('lecture_code', openapi.IN_QUERY, type=openapi.TYPE_STRING, required=True, description="강의 코드"),
+        ]
+    )
+    def get(self, request):
+        professor = request.user
+        lecture_code = request.query_params.get("lecture_code")
+
+        if not lecture_code:
+            return Response({"error": "lecture_code는 필수입니다."}, status=400)
+
+        try:
+            lecture = Lecture.objects.get(code=lecture_code, professor=professor)
+        except Lecture.DoesNotExist:
+            return Response({"error": "해당 강의를 찾을 수 없습니다."}, status=404)
+
+        students = lecture.students.all()
+        return Response([
+            {
+                "id": s.id,
+                "username": s.username,
+                "name": s.name,
+                "major": s.major,
+                "department": s.department,
+            } for s in students
         ])
