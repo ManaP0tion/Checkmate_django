@@ -1,3 +1,4 @@
+from attendance.models import AttendanceSession  # Add this import at the top
 import requests
 
 RASPBERRY_PI_IP = "192.168.137.119"
@@ -19,15 +20,18 @@ def notify_raspberry_pi_start(session):
     except requests.RequestException:
         return False
 
-def notify_raspberry_pi_stop(session):
-    session_code = f"{session.lecture.code}_{session.week}"
+def notify_raspberry_pi_stop(session_id):
     try:
+        session = AttendanceSession.objects.get(id=session_id)
+        session_code = f"{session.lecture.code}_{session.week}"
         response = requests.post(
             f"http://{RASPBERRY_PI_IP}:{RASPBERRY_PI_PORT}/api/ble/stop/",
             json={"session_id": session_code},
             timeout=3
         )
         return response.status_code == 200
+    except AttendanceSession.DoesNotExist:
+        return False
     except requests.RequestException:
         return False
 
