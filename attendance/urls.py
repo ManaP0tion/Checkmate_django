@@ -14,7 +14,7 @@ urlpatterns = [
     path('sessions/start/', StartAttendanceSessionView.as_view(), name='start-attendance-session'),
     path('sessions/end/', EndAttendanceSessionView.as_view(), name='end-attendance-session'),
     path('sessions/<str:lecture_code>/list/', LectureSessionListView.as_view(), name='lecture-sessions'),
-path('sessions/<str:session_code>/attendance/', SessionAttendanceListView.as_view(), name='session-attendance-list'),
+    path('sessions/<str:session_code>/attendance/', SessionAttendanceListView.as_view(), name='session-attendance-list'),
 
     # 강의 관련
     path('lectures/create/', LectureCreateView.as_view(), name='create-lecture'),

@@ -518,22 +518,22 @@ class BLEAttendanceView(APIView):
         operation_summary="BLE 출석 처리",
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
-            required=["student_id", "lecture_code", "session_id"],
+            required=["student_id", "lecture_code", "session_code"],
             properties={
                 "student_id": openapi.Schema(type=openapi.TYPE_INTEGER),
                 "lecture_code": openapi.Schema(type=openapi.TYPE_STRING),
-                "session_id": openapi.Schema(type=openapi.TYPE_INTEGER),
+                "session_code": openapi.Schema(type=openapi.TYPE_STRING),
             }
         )
     )
     def post(self, request):
         student_id = request.data.get("student_id")
         lecture_code = request.data.get("lecture_code")
-        session_id = request.data.get("session_id")
+        session_code = request.data.get("session_code")
 
         try:
             student = User.objects.get(id=student_id)
-            session = AttendanceSession.objects.get(id=session_id, lecture__code=lecture_code)
+            session = AttendanceSession.objects.get(session_code=session_code, lecture__code=lecture_code)
         except (User.DoesNotExist, AttendanceSession.DoesNotExist):
             return Response({"error": "학생 또는 세션을 찾을 수 없습니다."}, status=404)
 
